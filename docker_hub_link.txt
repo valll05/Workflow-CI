@@ -1,0 +1,9 @@
+# Docker Hub Link
+# Workflow-CI Model Image
+
+Repository: https://hub.docker.com/r/valll05/workflow-ci-model
+
+Pull command:
+docker pull valll05/workflow-ci-model:latest
+
+Note: Ganti 'valll05' dengan username Docker Hub Anda jika berbeda.

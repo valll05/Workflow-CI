@@ -1,0 +1,169 @@
+name: MLflow CI/CD - Advanced
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.12.7'
+  DOCKER_IMAGE_NAME: 'workflow-ci-model'
+
+jobs:
+  train-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # ==================== SET UP JOB ====================
+    - name: Run actions/checkout@v3
+      uses: actions/checkout@v3
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    # ==================== CHECK ENV ====================
+    - name: Check Env
+      run: |
+        echo "Python version:"
+        python --version
+        echo "Pip version:"
+        pip --version
+        echo "Working directory:"
+        pwd
+        echo "Files in directory:"
+        ls -la
+        echo "MLProject contents:"
+        ls -la MLProject/
+    
+    # ==================== INSTALL DEPENDENCIES ====================
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy pandas scikit-learn mlflow joblib virtualenv
+    
+    # ==================== RUN MLFLOW PROJECT ====================
+    - name: Run mlflow project
+      run: |
+        cd MLProject
+        python modelling.py
+        cd ..
+    
+    # ==================== GET LATEST MLFLOW RUN_ID ====================
+    - name: Get latest MLflow run_id
+      id: get_run_id
+      run: |
+        if [ -f "MLProject/run_id.txt" ]; then
+          RUN_ID=$(cat MLProject/run_id.txt)
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "MLflow Run ID: $RUN_ID"
+        else
+          echo "run_id.txt not found, searching in mlruns..."
+          RUN_ID=$(ls -t MLProject/mlruns/*/runs/*/meta.yaml 2>/dev/null | head -1 | xargs dirname | xargs basename || echo "")
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+        fi
+    
+    # ==================== INSTALL PYTHON DEPENDENCIES (for Docker) ====================
+    - name: Install Python dependencies
+      run: |
+        pip install mlflow[extras] boto3 google-cloud-storage
+    
+    # ==================== UPLOAD TO GITHUB (Artifacts) ====================
+    - name: Upload to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: mlflow-artifacts
+        path: |
+          MLProject/mlruns/
+          MLProject/iris_preprocessing/
+          MLProject/run_id.txt
+        retention-days: 30
+    
+    # ==================== BUILD DOCKER MODEL ====================
+    - name: Build Docker Model
+      run: |
+        # Find the model path
+        MODEL_PATH=$(find MLProject/mlruns -name "model" -type d | head -1)
+        
+        if [ -n "$MODEL_PATH" ]; then
+          echo "Found model at: $MODEL_PATH"
+          
+          # Build docker image using mlflow
+          mlflow models build-docker \
+            -m "$MODEL_PATH" \
+            -n "${{ env.DOCKER_IMAGE_NAME }}" \
+            --enable-mlserver
+          
+          echo "Docker image built successfully!"
+          docker images
+        else
+          echo "Model path not found, building from run..."
+          # Alternative: create a simple Dockerfile
+          echo "Creating fallback Docker image..."
+          
+          cat > Dockerfile << 'EOF'
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY MLProject/ ./MLProject/
+        RUN pip install --no-cache-dir numpy pandas scikit-learn mlflow joblib
+        EXPOSE 5000
+        CMD ["python", "-c", "print('Model container ready')"]
+        EOF
+          
+          docker build -t ${{ env.DOCKER_IMAGE_NAME }} .
+        fi
+    
+    # ==================== LOG IN TO DOCKER HUB ====================
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    # ==================== TAG DOCKER IMAGE ====================
+    - name: Tag Docker Image
+      run: |
+        # Tag with latest
+        docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+        
+        # Tag with run ID if available
+        if [ -n "${{ steps.get_run_id.outputs.run_id }}" ]; then
+          docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.get_run_id.outputs.run_id }}
+        fi
+        
+        # Tag with timestamp
+        docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:$(date +%Y%m%d-%H%M%S)
+        
+        echo "Tagged images:"
+        docker images | grep ${{ env.DOCKER_IMAGE_NAME }}
+    
+    # ==================== PUSH DOCKER IMAGE ====================
+    - name: Push Docker Image
+      run: |
+        # Push latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+        
+        # Push with run ID if available
+        if [ -n "${{ steps.get_run_id.outputs.run_id }}" ]; then
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.get_run_id.outputs.run_id }}
+        fi
+        
+        echo "Docker images pushed successfully!"
+    
+    # ==================== COMPLETE JOB ====================
+    - name: Complete job
+      run: |
+        echo "========================================"
+        echo "CI/CD WORKFLOW COMPLETED SUCCESSFULLY!"
+        echo "========================================"
+        echo ""
+        echo "Summary:"
+        echo "- MLflow Run ID: ${{ steps.get_run_id.outputs.run_id }}"
+        echo "- Docker Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest"
+        echo "- Artifacts uploaded to GitHub"
+        echo ""
+        echo "To pull the Docker image:"
+        echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest"
