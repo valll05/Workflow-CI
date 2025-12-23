@@ -71,7 +71,7 @@ Workflow akan otomatis berjalan ketika:
 Docker image tersedia di:
 
 ```
-docker pull valll05/workflow-ci-model:latest
+docker pull gideee/workflow-ci-model:latest
 ```
 
 Lihat: [docker_hub_link.txt](docker_hub_link.txt)
