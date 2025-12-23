@@ -15,7 +15,7 @@ Workflow-CI/
 │   ├── modelling.py             # Script training model
 │   ├── conda.yaml               # Environment dependencies
 │   ├── MLProject                # MLflow project config
-│   └── iris_preprocessing/      # Dataset (auto-generated)
+│   └── heart_preprocessing/     # Dataset (preprocessed Heart Disease data)
 ├── README.md
 └── docker_hub_link.txt          # Link ke Docker Hub
 ```
@@ -78,7 +78,9 @@ Lihat: [docker_hub_link.txt](docker_hub_link.txt)
 
 ## 📊 Model Info
 
-- **Dataset**: Iris Classification
+- **Dataset**: Heart Disease Classification
+- **Features**: 13 clinical attributes (age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal)
+- **Target**: Binary classification (0 = No Disease, 1 = Disease)
 - **Model**: RandomForestClassifier
 - **Framework**: scikit-learn + MLflow
 

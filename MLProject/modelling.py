@@ -10,13 +10,14 @@ Kriteria Advanced:
 - Melatih model ML dengan MLflow Tracking
 - Menggunakan autolog dari MLflow
 - Model siap untuk docker build
+
+Dataset: Heart Disease
 """
 
 import os
 import sys
 import pandas as pd
 import numpy as np
-from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -27,53 +28,38 @@ import json
 
 warnings.filterwarnings('ignore')
 
+# Feature columns untuk Heart Disease dataset
+FEATURE_COLS = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 
+                'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal']
+
 
 def load_or_create_data():
     """
-    Load preprocessed data jika ada, atau buat dari sklearn iris dataset.
+    Load preprocessed Heart Disease data dari folder heart_preprocessing.
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(script_dir, 'iris_preprocessing')
+    data_dir = os.path.join(script_dir, 'heart_preprocessing')
     
     train_path = os.path.join(data_dir, 'train_data.csv')
     test_path = os.path.join(data_dir, 'test_data.csv')
     
-    # Coba load dari file CSV jika ada
+    # Load dari file CSV
     if os.path.exists(train_path) and os.path.exists(test_path):
-        print("[INFO] Loading data from preprocessed CSV files...")
+        print("[INFO] Loading Heart Disease data from preprocessed CSV files...")
         train_data = pd.read_csv(train_path)
         test_data = pd.read_csv(test_path)
         
-        feature_cols = ['sepal length (cm)', 'sepal width (cm)', 
-                        'petal length (cm)', 'petal width (cm)']
-        
-        X_train = train_data[feature_cols]
+        X_train = train_data[FEATURE_COLS]
         y_train = train_data['target']
-        X_test = test_data[feature_cols]
+        X_test = test_data[FEATURE_COLS]
         y_test = test_data['target']
+        
+        print(f"[OK] Data loaded from {data_dir}")
     else:
-        # Load dari sklearn dan split
-        print("[INFO] Loading Iris dataset from sklearn...")
-        iris = load_iris()
-        X = pd.DataFrame(iris.data, columns=iris.feature_names)
-        y = pd.Series(iris.target, name='target')
-        
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+        raise FileNotFoundError(
+            f"Preprocessed data not found in {data_dir}. "
+            "Please run the preprocessing script first."
         )
-        
-        # Simpan ke file untuk referensi
-        os.makedirs(data_dir, exist_ok=True)
-        
-        train_data = X_train.copy()
-        train_data['target'] = y_train.values
-        train_data.to_csv(train_path, index=False)
-        
-        test_data = X_test.copy()
-        test_data['target'] = y_test.values
-        test_data.to_csv(test_path, index=False)
-        
-        print(f"[OK] Data saved to {data_dir}")
     
     return X_train, X_test, y_train, y_test
 
@@ -86,12 +72,13 @@ def train_model_with_autolog():
     print("=" * 60)
     print("WORKFLOW CI - MODELLING")
     print("MLflow Autolog with Advanced Features")
+    print("Dataset: Heart Disease")
     print("=" * 60)
     
     # Load data
     print("\n[INFO] Loading data...")
     X_train, X_test, y_train, y_test = load_or_create_data()
-    print(f"[OK] Training data: {X_train.shape[0]} samples")
+    print(f"[OK] Training data: {X_train.shape[0]} samples, {X_train.shape[1]} features")
     print(f"[OK] Testing data: {X_test.shape[0]} samples")
     
     # Enable autolog
@@ -121,7 +108,8 @@ def train_model_with_autolog():
         accuracy = accuracy_score(y_test, y_pred)
         
         # Log additional info
-        mlflow.log_param("dataset", "iris")
+        mlflow.log_param("dataset", "heart_disease")
+        mlflow.log_param("num_features", len(FEATURE_COLS))
         mlflow.log_metric("test_accuracy", accuracy)
         
         # Log classification report sebagai artifact
